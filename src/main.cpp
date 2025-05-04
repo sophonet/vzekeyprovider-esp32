@@ -1,10 +1,13 @@
 #include <ESPAsyncWebServer.h>
 #include <Ticker.h>
+#include <DNSServer.h>
 #include <WiFi.h>
+#include <LittleFS.h>
 
 // Access Point Configuration
 const char *apSSID = "Secret-Server-Access-Point";
-const char *apPassword = "12345678";
+const char *apPassword = "yFRAzS$wwB$4f";
+const char *partner_host = "partner.example.com";
 
 bool wifiConnecting = false;
 bool networkServerStarted = false;
@@ -15,7 +18,12 @@ String customPassword;
 
 Ticker ledTicker;
 
+DNSServer dnsServer;
+
+IPAddress ip;
+
 const int ledPin = LED_BUILTIN;  // Built-in LED pin
+const int DNS_PORT = 53;
 
 // Initial Web Server (for AP mode)
 AsyncWebServer *apServer = nullptr;
@@ -34,27 +42,71 @@ void toggleLED() {
   }
 }
 
+boolean captivePortal(AsyncWebServerRequest *request) {
+  if (ip.toString() != request->host()) {
+    Serial.println("Request redirected to captive portal");
+    Serial.println(String("http://") + ip.toString());
+    AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "");
+    response->addHeader("Location", String("http://") + ip.toString());
+    request->send(response);
+    return true;
+  }
+  return false;
+}
+
+void loginPage(AsyncWebServerRequest *request) {
+    request->send(
+        200, "text/html",
+        "<html><head>"
+        "<link rel=\"stylesheet\" href=\"/pure-min.css\">"
+        "<style> .form-container { display: flex; justify-content: center; }</style>"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
+        "<body><div class=\"form-container\"><form class=\"pure-form pure-form-stacked center\" action=\"/set_password\" method=\"POST\">"
+        "<fieldset>"
+        "<label for=\"ssid\">WLAN SSID</label>"
+        "<input type=\"text\" name=\"ssid\" />"
+        "<label for=\"password\">WLAN password</label>"
+        "<input type=\"password\" name=\"password\" />"
+        "<label for=\"secret\">Crypt secret</label>"
+        "<input type=\"text\" name=\"customPassword\" />"
+        "<button type=\"submit\" class=\"pure-button pure-button-primary\">Launch</button></fieldset></form></div></body></html>");
+}
+
 void setup() {
     Serial.begin(115200);
+
+    if(!LittleFS.begin(true)){
+        Serial.println("An Error has occurred while mounting SPIFFS");
+        return;
+    }
 
     pinMode(ledPin, OUTPUT);
 
     // Start Access Point
     WiFi.softAP(apSSID, apPassword);
+    ip = WiFi.softAPIP();
     Serial.println("Access Point gestartet");
     Serial.print("AP IP: ");
-    Serial.println(WiFi.softAPIP());
+    Serial.println(ip);
 
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.start(DNS_PORT, "*", ip); // Start DNS server on port 53, responding to all domains with AP IP
+  
     // Configure initial server for AP mode
     apServer = new AsyncWebServer(80);
+    apServer->onNotFound(loginPage);
+
+    apServer->on("/pure-min.css", HTTP_GET, [](AsyncWebServerRequest *request){
+        Serial.println("Requesting pure-min.css");
+        request->send(LittleFS, "/pure-min.css", "text/css");
+    });
+
     apServer->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(
-            200, "text/html",
-            "<form action=\"/submit\" method=\"POST\">"
-            "SSID: <input type=\"text\" name=\"ssid\"><br>"
-            "Passwort für SSID: <input type=\"text\" name=\"password\"><br>"
-            "Custom Passwort: <input type=\"text\" name=\"customPassword\"><br>"
-            "<input type=\"submit\" value=\"Submit\"></form>");
+        if (captivePortal(request)) { 
+          return;
+        } else {
+            loginPage(request);
+        }
     });
 
     apServer->on("/submit", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -95,6 +147,7 @@ void setup() {
 }
 
 void loop() {
+    dnsServer.processNextRequest();
     if (wifiConnecting) {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("Verbunden!");
@@ -130,6 +183,10 @@ void startNetworkServer() {
 
     networkServer->on("/password", HTTP_GET,
                       [](AsyncWebServerRequest *request) {
+                        if (request->host() != partner_host) {
+                            request->send(403, "text/plain", "Forbidden");
+                            return;
+                        }
                           request->send(200, "text/plain", customPassword);
                       });
 
