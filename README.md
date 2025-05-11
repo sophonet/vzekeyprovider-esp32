@@ -1,4 +1,4 @@
-# vzekeyprovider running on low-power Arduino ESP32 board
+# zfskeyprovider running on low-power Arduino ESP32 board
 
 Using PlatformIO as a development platform for the ESP32 board, this project
 aims at a small webserver in a local WiFi network. Once booted, it acts

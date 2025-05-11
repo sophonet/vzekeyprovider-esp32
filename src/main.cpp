@@ -5,7 +5,7 @@
 #include <LittleFS.h>
 
 // Access Point Configuration
-const char *apSSID = "Secret-Server-Access-Point";
+const char *apSSID = "ZFS-Keyprovider-Access-Point";
 const char *apPassword = "yFRAzS$wwB$4f";
 const char *partner_host = "partner.example.com";
 
@@ -14,7 +14,7 @@ bool networkServerStarted = false;
 
 String ssid;
 String password;
-String customPassword;
+String enczfskey;
 
 Ticker ledTicker;
 
@@ -59,6 +59,7 @@ void loginPage(AsyncWebServerRequest *request) {
         200, "text/html",
         "<html><head>"
         "<link rel=\"stylesheet\" href=\"/pure-min.css\">"
+        "<title>ZFS Key Provider</title>"
         "<style> .form-container { display: flex; justify-content: center; }</style>"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
         "<body><div class=\"form-container\"><form class=\"pure-form pure-form-stacked center\" action=\"/set_password\" method=\"POST\">"
@@ -67,8 +68,8 @@ void loginPage(AsyncWebServerRequest *request) {
         "<input type=\"text\" name=\"ssid\" />"
         "<label for=\"password\">WLAN password</label>"
         "<input type=\"password\" name=\"password\" />"
-        "<label for=\"secret\">Crypt secret</label>"
-        "<input type=\"text\" name=\"customPassword\" />"
+        "<label for=\"secret\">Encrypted ZFS Key</label>"
+        "<input type=\"text\" name=\"enczfskey\" />"
         "<button type=\"submit\" class=\"pure-button pure-button-primary\">Launch</button></fieldset></form></div></body></html>");
 }
 
@@ -113,11 +114,11 @@ void setup() {
         // Extract form parameters
         ssid = request->getParam("ssid", true)->value();
         password = request->getParam("password", true)->value();
-        customPassword = request->getParam("customPassword", true)->value();
+        enczfskey = request->getParam("enczfskey", true)->value();
 
         Serial.println("SSID: " + ssid);
         Serial.println("Passwort: " + password);
-        Serial.println("Custom Passwort: " + customPassword);
+        Serial.println("Custom Passwort: " + enczfskey);
 
         request->send(200, "text/html",
                       "Einstellungen gespeichert. Verbinde zu " + ssid + "...");
@@ -187,7 +188,7 @@ void startNetworkServer() {
                             request->send(403, "text/plain", "Forbidden");
                             return;
                         }
-                          request->send(200, "text/plain", customPassword);
+                          request->send(200, "text/plain", enczfskey);
                       });
 
     networkServer->begin();
